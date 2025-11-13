@@ -1,0 +1,254 @@
+version: "3.9"
+
+services:
+  # --- 1. HDFS (Storage) ---
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop${HADOOP_VERSION}-java8
+    container_name: namenode
+    ports:
+      - "9870:9870" # HDFS Web UI
+      - "9000:9000" # HDFS port
+    environment:
+      - CLUSTER_NAME=test
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - TZ=UTC
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+    networks:
+      - hadoop
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop${HADOOP_VERSION}-java8
+    container_name: datanode
+    depends_on:
+      - namenode
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - TZ=UTC
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    networks:
+      - hadoop
+
+  # --- 2. YARN (MapReduce) ---
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop${HADOOP_VERSION}-java8
+    container_name: resourcemanager
+    ports:
+      - "8088:8088" # YARN Web UI
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - TZ=UTC
+    depends_on:
+      - namenode
+      - datanode
+    networks:
+      - hadoop
+
+  nodemanager:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop${HADOOP_VERSION}-java8
+    container_name: nodemanager
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - TZ=UTC
+    depends_on:
+      - namenode
+      - datanode
+      - resourcemanager
+    networks:
+      - hadoop
+
+  # --- 3. Kafka (Message Broker for Real-time Ingestion) ---
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=2181
+      - ZOOKEEPER_TICK_TIME=2000
+      - TZ=UTC
+    networks:
+      - hadoop
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
+      - TZ=UTC
+    networks:
+      - hadoop
+
+  # --- 4. Spark ---
+  spark-master:
+    image: bde2020/spark-master:3.1.1-hadoop3.2
+    container_name: spark-master
+    ports:
+      - "8080:8080" # Spark Master Web UI
+      - "7077:7077" # Spark submit port
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    depends_on:
+      - namenode
+    networks:
+      - hadoop
+
+  spark-worker:
+    image: bde2020/spark-worker:3.1.1-hadoop3.2
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    networks:
+      - hadoop
+
+  # --- 5. Hive ---
+  hive-server:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-server
+    ports:
+      - "10000:10000" # Hive JDBC port
+    environment:
+      - HIVE_METASTORE_DB_URL=jdbc:postgresql://hive-metastore-db:5432/metastore
+      - HIVE_METASTORE_DB_USER=hive
+      - HIVE_METASTORE_DB_PASSWORD=hive
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    depends_on:
+      - hive-metastore-db
+      - namenode
+    networks:
+      - hadoop
+
+  hive-metastore:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-metastore
+    environment:
+      - HIVE_METASTORE_DB_URL=jdbc:postgresql://hive-metastore-db:5432/metastore
+      - HIVE_METASTORE_DB_USER=hive
+      - HIVE_METASTORE_DB_PASSWORD=hive
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    depends_on:
+      - hive-metastore-db
+      - namenode
+    networks:
+      - hadoop
+
+  hive-metastore-db:
+    image: postgres:12
+    container_name: hive-metastore-db
+    environment:
+      - POSTGRES_USER=hive
+      - POSTGRES_PASSWORD=hive
+      - POSTGRES_DB=metastore
+    volumes:
+      - hive_metastore_db:/var/lib/postgresql/data
+    networks:
+      - hadoop
+
+  # --- 6. Zeppelin (Your UI) ---
+  zeppelin:
+    image: apache/zeppelin:${ZEPPELIN_VERSION}
+    container_name: zeppelin
+    ports:
+      - "9090:8080" # Zeppelin Web UI (local 9090 -> container 8080)
+    depends_on:
+      - spark-master
+      - hive-server
+    volumes:
+      - ./data:/data # Map a local 'data' folder for your datasets
+      - zeppelin_notebooks:/opt/zeppelin/notebook
+      - zeppelin_logs:/opt/zeppelin/logs
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    networks:
+      - hadoop
+
+  # --- 7. ClickHouse (Data Warehouse) ---
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    ports:
+      - "8123:8123" # HTTP interface
+      - "9001:9000" # Native TCP interface (changed from 9000 to avoid conflict with HDFS)
+    environment:
+      - CLICKHOUSE_DB=weather_analytics
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=clickhouse123
+      - TZ=UTC
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./src/clickhouse:/docker-entrypoint-initdb.d
+    networks:
+      - hadoop
+
+  # # --- 7. Kafka Producer (File Watcher) ---
+  # kafka-producer:
+  #   image: python:3.11-slim
+  #   container_name: kafka-producer
+  #   depends_on:
+  #     - kafka
+  #   volumes:
+  #     - ./data:/app/data
+  #     - ./src/kafka:/app
+  #   working_dir: /app
+  #   command: >
+  #     bash -c "pip install --no-cache-dir kafka-python==2.0.2 watchdog==3.0.0 &&
+  #              python file_watcher_producer.py"
+  #   environment:
+  #     - KAFKA_BROKER=kafka:9092
+  #     - KAFKA_TOPIC=weather-data-stream
+  #     - WATCH_FOLDER=./data
+  #   networks:
+  #     - hadoop
+  #   restart: unless-stopped
+
+  # # --- 8. Kafka Consumer (HDFS Writer) ---
+  # kafka-consumer:
+  #   image: python:3.11-slim
+  #   container_name: kafka-consumer
+  #   depends_on:
+  #     - kafka
+  #     - namenode
+  #   volumes:
+  #     - ./src/kafka:/app
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   working_dir: /app
+  #   command: >
+  #     bash -c "apt-get update -qq &&
+  #              apt-get install -y -qq docker.io &&
+  #              pip install --no-cache-dir kafka-python==2.0.2 &&
+  #              python kafka_hdfs_consumer.py"
+  #   environment:
+  #     - KAFKA_BROKER=kafka:9092
+  #     - KAFKA_TOPIC=weather-data-stream
+  #     - HDFS_PATH=/user/data/kafka_ingested
+  #   networks:
+  #     - hadoop
+  #   restart: unless-stopped
+
+# --- Networks ---
+networks:
+  hadoop:
+    driver: bridge
+
+# --- Volumes (to persist data) ---
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
+  hive_metastore_db:
+  zeppelin_notebooks:
+  zeppelin_logs:
+  clickhouse_data:

@@ -1,0 +1,39 @@
+# Claude Code directory
+.claude/
+
+# Environment variables
+.env
+
+# Data directories
+data/
+hdfs_results/
+results/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
