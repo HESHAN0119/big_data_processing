@@ -16,11 +16,13 @@ __pycache__/
 *.so
 .Python
 
+.loadcsv.ipynb
+
 # Virtual environments
 venv/
 env/
 ENV/
-
+C:\Users/*
 # IDE
 .vscode/
 .idea/
