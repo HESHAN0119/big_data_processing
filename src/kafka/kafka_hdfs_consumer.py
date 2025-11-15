@@ -109,6 +109,41 @@ class HDFSWriter:
         self.current_filename = None
         self.current_hdfs_path = None
 
+    def run_hive(self):
+        """Run Hive analysis after data ingestion"""
+        logger.info("="*60)
+        logger.info("Starting Hive Analysis Pipeline")
+        logger.info("="*60)
+
+        # Get project root directory (2 levels up from src/kafka/)
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+        try:
+            # Run Hive analysis script
+            logger.info("Executing Hive analysis...")
+            hive_script = os.path.join(project_root, 'run_hive_analysis_simple.py')
+
+            result = subprocess.run(
+                ['python', hive_script],
+                cwd=project_root,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                logger.info("Hive analysis completed successfully")
+                logger.info(result.stdout)
+                logger.info("="*60)
+                logger.info("HIVE ANALYSIS COMPLETED!")
+                logger.info("="*60)
+            else:
+                logger.error(f"Hive analysis failed: {result.stderr}")
+
+        except Exception as e:
+            logger.error(f"Error running Hive analysis: {e}")
+
+        logger.info("Resuming Kafka consumption...")
+
     def run_processing_pipeline(self):
         """Run MapReduce and ClickHouse loading pipeline after weather data ingestion"""
         if not self.weather_files_written:
@@ -229,10 +264,16 @@ def main():
                 logger.info(f"Received end marker for {filename}")
                 hdfs_writer.write_to_hdfs()
 
-                # If this was a weather file, trigger the processing pipeline
+                # If this was a weather file, trigger the processing pipelines
                 if 'weather' in filename.lower():
                     logger.info(f"Weather file ingestion completed: {filename}")
-                    logger.info("Triggering automated processing pipeline...")
+
+                    # Step 1: Run Hive analysis first
+                    logger.info("Triggering Hive analysis pipeline...")
+                    hdfs_writer.run_hive()
+
+                    # Step 2: Run MapReduce pipeline
+                    logger.info("Triggering MapReduce processing pipeline...")
                     hdfs_writer.run_processing_pipeline()
 
     except KeyboardInterrupt:
