@@ -16,7 +16,7 @@ CLICKHOUSE_HOST = 'localhost'
 CLICKHOUSE_PORT = 8123
 CLICKHOUSE_DB = 'weather_analytics'
 CLICKHOUSE_USER = 'default'
-CLICKHOUSE_PASSWORD = 'clickhouse123'
+CLICKHOUSE_PASSWORD = None  # No authentication needed
 
 def run_command(cmd, description):
     """Run shell command and handle errors"""
@@ -38,7 +38,7 @@ def get_last_updated_time():
     print("[*] Checking last update time from ClickHouse metadata...")
 
     # Query ClickHouse metadata table
-    cmd = 'docker exec clickhouse clickhouse-client --user=default --password=clickhouse123 --query="SELECT last_updated_time FROM meta.updated_time WHERE table_name = \'district_monthly_weather\' LIMIT 1"'
+    cmd = 'docker exec clickhouse clickhouse-client --query="SELECT last_updated_time FROM meta.updated_time WHERE table_name = \'district_monthly_weather\' LIMIT 1"'
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
     if result.returncode == 0 and result.stdout.strip():
@@ -107,8 +107,8 @@ def update_metadata_timestamp(folder_names):
     print(f"\n[*] Updating metadata with latest timestamp: {datetime_str}")
 
     # Delete old entry and insert new one
-    cmd_delete = 'docker exec clickhouse clickhouse-client --user=default --password=clickhouse123 --query="ALTER TABLE meta.updated_time DELETE WHERE table_name = \'district_monthly_weather\'"'
-    cmd_insert = f'docker exec clickhouse clickhouse-client --user=default --password=clickhouse123 --query="INSERT INTO meta.updated_time (table_name, last_updated_time) VALUES (\'district_monthly_weather\', \'{datetime_str}\')"'
+    cmd_delete = 'docker exec clickhouse clickhouse-client --query="ALTER TABLE meta.updated_time DELETE WHERE table_name = \'district_monthly_weather\'"'
+    cmd_insert = f'docker exec clickhouse clickhouse-client --query="INSERT INTO meta.updated_time (table_name, last_updated_time) VALUES (\'district_monthly_weather\', \'{datetime_str}\')"'
 
     if run_command(cmd_delete, "  Deleting old metadata entry"):
         if run_command(cmd_insert, "  Inserting new metadata entry"):
@@ -251,7 +251,7 @@ def get_last_updated_time_hp():
     print("[*] Checking last update time from ClickHouse metadata...")
 
     # Query ClickHouse metadata table
-    cmd = 'docker exec clickhouse clickhouse-client --user=default --password=clickhouse123 --query="SELECT last_updated_time FROM meta.updated_time WHERE table_name = \'highest_precipitation\' LIMIT 1"'
+    cmd = 'docker exec clickhouse clickhouse-client --query="SELECT last_updated_time FROM meta.updated_time WHERE table_name = \'highest_precipitation\' LIMIT 1"'
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
     if result.returncode == 0 and result.stdout.strip():
@@ -320,8 +320,8 @@ def update_metadata_timestamp_hp(folder_names):
     print(f"\n[*] Updating metadata with latest timestamp: {datetime_str}")
 
     # Delete old entry and insert new one
-    cmd_delete = 'docker exec clickhouse clickhouse-client --user=default --password=clickhouse123 --query="ALTER TABLE meta.updated_time DELETE WHERE table_name = \'highest_precipitation\'"'
-    cmd_insert = f'docker exec clickhouse clickhouse-client --user=default --password=clickhouse123 --query="INSERT INTO meta.updated_time (table_name, last_updated_time) VALUES (\'highest_precipitation\', \'{datetime_str}\')"'
+    cmd_delete = 'docker exec clickhouse clickhouse-client --query="ALTER TABLE meta.updated_time DELETE WHERE table_name = \'highest_precipitation\'"'
+    cmd_insert = f'docker exec clickhouse clickhouse-client --query="INSERT INTO meta.updated_time (table_name, last_updated_time) VALUES (\'highest_precipitation\', \'{datetime_str}\')"'
 
     if run_command(cmd_delete, "  Deleting old metadata entry"):
         if run_command(cmd_insert, "  Inserting new metadata entry"):

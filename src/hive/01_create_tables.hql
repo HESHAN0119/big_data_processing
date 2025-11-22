@@ -28,10 +28,11 @@ TBLPROPERTIES ("skip.header.line.count"="1");
 
 -- Step 3: Create Weather Table
 -- Points to: /user/data/kafka_ingested/weather/
+-- Note: Using 'dt' instead of 'date' to avoid bash backtick interpretation issues
 DROP TABLE IF EXISTS weather_data;
 CREATE EXTERNAL TABLE weather_data (
     location_id INT,
-    date STRING,
+    dt STRING,
     weather_code INT,
     temperature_2m_max DOUBLE,
     temperature_2m_min DOUBLE,

@@ -24,8 +24,8 @@ FROM (
         location_id,
         et0_fao_evapotranspiration,
         -- Extract month and year from date (format: M/D/YYYY or MM/DD/YYYY)
-        CAST(SPLIT(date, '/')[0] AS INT) as month_num,
-        CAST(SPLIT(date, '/')[2] AS INT) as year_num
+        CAST(SPLIT(dt, '/')[0] AS INT) as month_num,
+        CAST(SPLIT(dt, '/')[2] AS INT) as year_num
     FROM weather_data
     WHERE et0_fao_evapotranspiration IS NOT NULL
 ) w

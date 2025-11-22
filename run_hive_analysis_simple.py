@@ -15,13 +15,13 @@ CLICKHOUSE_HOST = 'localhost'
 CLICKHOUSE_PORT = 8123
 CLICKHOUSE_DB = 'weather_analytics'
 CLICKHOUSE_USER = 'default'
-CLICKHOUSE_PASSWORD = 'clickhouse123'
+CLICKHOUSE_PASSWORD = ''  # No password for ClickHouse
 
 def execute_clickhouse_query(query):
     """Execute a query on ClickHouse"""
     url = f'http://{CLICKHOUSE_HOST}:{CLICKHOUSE_PORT}'
     params = {'database': CLICKHOUSE_DB}
-    auth = (CLICKHOUSE_USER, CLICKHOUSE_PASSWORD) if CLICKHOUSE_USER else None
+    auth = None  # No authentication needed
 
     try:
         response = requests.post(url, params=params, auth=auth, data=query.encode('utf-8'))
@@ -42,8 +42,7 @@ def create_clickhouse_tables():
         avg_max_temp Float64,
         analysis_timestamp DateTime,
         created_at DateTime DEFAULT now()
-    ) ENGINE = MergeTree()
-    ORDER BY (analysis_timestamp, avg_max_temp);
+    ) ENGINE = MergeTree() ORDER BY (analysis_timestamp, avg_max_temp);
     """
 
     # Table for Evapotranspiration by Season
@@ -55,9 +54,16 @@ def create_clickhouse_tables():
         avg_evapotranspiration Float64,
         analysis_timestamp DateTime,
         created_at DateTime DEFAULT now()
-    ) ENGINE = MergeTree()
-    ORDER BY (city_name, year, season);
+    ) ENGINE = MergeTree() ORDER BY (city_name, year, season);
     """
+
+    execute_clickhouse_query("""
+    CREATE TABLE IF NOT EXISTS meta.updated_time (
+        table_name String,
+        last_updated_time DateTime
+    ) ENGINE = MergeTree() ORDER BY table_name;
+    """)
+    print("    [OK] ClickHouse tables ready")
 
     result1 = execute_clickhouse_query(table1_sql)
     result2 = execute_clickhouse_query(table2_sql)
@@ -72,10 +78,10 @@ def update_metadata_timestamp(table_name, timestamp):
     print(f"\n[*] Updating metadata for {table_name}...")
 
     # Delete old entry
-    cmd_delete = f'docker exec clickhouse clickhouse-client --user={CLICKHOUSE_USER} --password={CLICKHOUSE_PASSWORD} --query="ALTER TABLE meta.updated_time DELETE WHERE table_name = \'{table_name}\'"'
+    cmd_delete = f'docker exec clickhouse clickhouse-client --query="ALTER TABLE meta.updated_time DELETE WHERE table_name = \'{table_name}\'"'
 
     # Insert new entry
-    cmd_insert = f'docker exec clickhouse clickhouse-client --user={CLICKHOUSE_USER} --password={CLICKHOUSE_PASSWORD} --query="INSERT INTO meta.updated_time (table_name, last_updated_time) VALUES (\'{table_name}\', \'{timestamp}\')"'
+    cmd_insert = f'docker exec clickhouse clickhouse-client --query="INSERT INTO meta.updated_time (table_name, last_updated_time) VALUES (\'{table_name}\', \'{timestamp}\')"'
 
     try:
         subprocess.run(cmd_delete, shell=True, capture_output=True, text=True, check=True)
@@ -88,7 +94,7 @@ def update_metadata_timestamp(table_name, timestamp):
 
 def get_last_updated_time(table_name):
     """Get last updated time from ClickHouse metadata table"""
-    cmd = f'docker exec clickhouse clickhouse-client --user={CLICKHOUSE_USER} --password={CLICKHOUSE_PASSWORD} --query="SELECT last_updated_time FROM meta.updated_time WHERE table_name = \'{table_name}\' LIMIT 1"'
+    cmd = f'docker exec clickhouse clickhouse-client --query="SELECT last_updated_time FROM meta.updated_time WHERE table_name = \'{table_name}\' LIMIT 1"'
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
     if result.returncode == 0 and result.stdout.strip():
@@ -170,7 +176,7 @@ def load_to_clickhouse_top_cities(hdfs_output, timestamp_str):
                 # Insert into ClickHouse
                 insert_query = f"""
                 INSERT INTO top_temperate_cities (city_name, avg_max_temp, analysis_timestamp)
-                VALUES ('{city_name}', {avg_temp}, '{datetime_str}')
+                VALUES ('{city_name}', {avg_temp}, toDateTime('{datetime_str}'))
                 """
                 if execute_clickhouse_query(insert_query) is not None:
                     records_inserted += 1
@@ -191,7 +197,12 @@ def load_to_clickhouse_evapotranspiration(hdfs_output, timestamp_str):
         # Get data from HDFS
         cmd = ['docker', 'exec', 'namenode', 'bash', '-c',
                f'hdfs dfs -cat {hdfs_output}/000000_0']
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        # Check if file exists
+        if result.returncode != 0:
+            print(f"    [!] File not found (skipping): {hdfs_output}")
+            return 0
 
         # Parse CSV data
         lines = result.stdout.strip().split('\n')
@@ -211,7 +222,7 @@ def load_to_clickhouse_evapotranspiration(hdfs_output, timestamp_str):
                 # Insert into ClickHouse
                 insert_query = f"""
                 INSERT INTO evapotranspiration_by_season (city_name, season, year, avg_evapotranspiration, analysis_timestamp)
-                VALUES ('{city_name}', '{season}', {year}, {avg_et}, '{datetime_str}')
+                VALUES ('{city_name}', '{season}', {year}, {avg_et}, toDateTime('{datetime_str}'))
                 """
                 if execute_clickhouse_query(insert_query) is not None:
                     records_inserted += 1
@@ -286,9 +297,11 @@ TBLPROPERTIES ('skip.header.line.count'='1');
     # Step 3: Create weather table ('date' is a reserved keyword, use `date`)
     weather_table_sql = """
 USE weather_analytics;
-CREATE EXTERNAL TABLE IF NOT EXISTS weather_data (
+DROP TABLE IF EXISTS weather_data;
+
+CREATE EXTERNAL TABLE weather_data (
     location_id INT,
-    record_date STRING,
+    dt STRING,
     weather_code INT,
     temperature_2m_max DOUBLE,
     temperature_2m_min DOUBLE,
@@ -309,8 +322,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS weather_data (
     sunrise STRING,
     sunset STRING
 )
-ROW FORMAT DELIMITED
-FIELDS TERMINATED BY ','
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
 STORED AS TEXTFILE
 LOCATION '/user/data/kafka_ingested/weather'
 TBLPROPERTIES ('skip.header.line.count'='1');
@@ -330,21 +342,16 @@ TBLPROPERTIES ('skip.header.line.count'='1');
 
     hdfs_output1 = f"/user/data/hive_output/top_10_temperate_cities_{timestamp}"
     query1_sql = f"""
-USE weather_analytics;
-INSERT OVERWRITE DIRECTORY '{hdfs_output1}'
-ROW FORMAT DELIMITED
-FIELDS TERMINATED BY ','
-SELECT
-    l.city_name,
-    ROUND(AVG(w.temperature_2m_max), 2) as avg_max_temp
-FROM weather_data w
-JOIN location_data l ON w.location_id = l.location_id
-WHERE w.temperature_2m_max IS NOT NULL
-GROUP BY l.city_name
-ORDER BY avg_max_temp ASC
-LIMIT 10;
-"""
-
+    USE weather_analytics;
+    INSERT OVERWRITE DIRECTORY '{hdfs_output1}'
+    ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+    SELECT l.city_name, ROUND(AVG(w.temperature_2m_max), 2) as avg_temp
+    FROM weather_data w JOIN location_data l ON w.location_id = l.location_id
+    WHERE w.temperature_2m_max IS NOT NULL
+    GROUP BY l.city_name
+    ORDER BY avg_temp ASC
+    LIMIT 10;
+    """
     run_hive_command(query1_sql, "Executing Query 1")
 
     # Step 6: Run Query 2 - Evapotranspiration by Season
@@ -354,26 +361,30 @@ LIMIT 10;
     # Simpler query without complex subquery for Hive 2.3 compatibility
     query2_sql = f"""
 USE weather_analytics;
+
 INSERT OVERWRITE DIRECTORY '{hdfs_output2}'
-ROW FORMAT DELIMITED
-FIELDS TERMINATED BY ','
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+
 SELECT
     l.city_name,
     CASE
-        WHEN CAST(SPLIT(w.record_date, '/')[0] AS INT) IN (9,10,11,12,1,2,3) THEN 'Maha'
-        WHEN CAST(SPLIT(w.record_date, '/')[0] AS INT) IN (4,5,6,7,8) THEN 'Yala'
-    END as season,
-    CAST(SPLIT(w.record_date, '/')[2] AS INT) as year,
-    ROUND(AVG(w.et0_fao_evapotranspiration), 2) as avg_et
+        WHEN CAST(split(w.dt, '/')[0] AS INT) IN (1,2,3,9,10,11,12) THEN 'Maha'
+        ELSE 'Yala'
+    END AS season,
+    CAST(split(w.dt, '/')[2] AS INT) AS year,
+    ROUND(AVG(w.et0_fao_evapotranspiration), 2) AS avg_evapotranspiration
 FROM weather_data w
 JOIN location_data l ON w.location_id = l.location_id
 WHERE w.et0_fao_evapotranspiration IS NOT NULL
-GROUP BY l.city_name,
+  AND w.dt IS NOT NULL
+  AND w.dt RLIKE '^[0-9]+/[0-9]+/[0-9]+$'
+GROUP BY
+    l.city_name,
+    split(w.dt, '/')[2],
     CASE
-        WHEN CAST(SPLIT(w.record_date, '/')[0] AS INT) IN (9,10,11,12,1,2,3) THEN 'Maha'
-        WHEN CAST(SPLIT(w.record_date, '/')[0] AS INT) IN (4,5,6,7,8) THEN 'Yala'
-    END,
-    CAST(SPLIT(w.record_date, '/')[2] AS INT)
+        WHEN CAST(split(w.dt, '/')[0] AS INT) IN (1,2,3,9,10,11,12) THEN 'Maha'
+        ELSE 'Yala'
+    END
 ORDER BY l.city_name, year, season;
 """
 
@@ -516,3 +527,293 @@ ORDER BY l.city_name, year, season;
 
 if __name__ == "__main__":
     main()
+
+
+# """
+# Simple Hive Analysis Runner - FINAL WORKING VERSION
+# Tested on Hive 2.1.1 + ClickHouse + Docker (2025)
+# """
+# import subprocess
+# import time
+# from datetime import datetime
+# from pathlib import Path
+# import requests
+
+# # ClickHouse Configuration
+# CLICKHOUSE_HOST = 'localhost'
+# CLICKHOUSE_PORT = 8123
+# CLICKHOUSE_DB = 'weather_analytics'
+# CLICKHOUSE_USER = 'default'
+# CLICKHOUSE_PASSWORD = ''  # Empty password (default ClickHouse Docker)
+
+# def execute_clickhouse_query(query):
+#     url = f'http://{CLICKHOUSE_HOST}:{CLICKHOUSE_PORT}'
+#     params = {'database': CLICKHOUSE_DB}
+#     try:
+#         response = requests.post(
+#             url,
+#             params=params,
+#             auth=('default', ''),  # Explicitly send empty password
+#             data=query.encode('utf-8'),
+#             timeout=10
+#         )
+#         response.raise_for_status()
+#         return response.text
+#     except Exception as e:
+#         print(f"    [X] ClickHouse Error: {e}")
+#         return None
+
+# def create_clickhouse_tables():
+#     print("\n[*] Creating ClickHouse tables and metadata...")
+#     # Create main tables
+#     execute_clickhouse_query("""
+#     CREATE TABLE IF NOT EXISTS top_temperate_cities (
+#         city_name String,
+#         avg_max_temp Float64,
+#         analysis_timestamp DateTime,
+#         created_at DateTime DEFAULT now()
+#     ) ENGINE = MergeTree() ORDER BY (analysis_timestamp, avg_max_temp);
+#     """)
+#     execute_clickhouse_query("""
+#     CREATE TABLE IF NOT EXISTS evapotranspiration_by_season (
+#         city_name String,
+#         season String,
+#         year UInt16,
+#         avg_evapotranspiration Float64,
+#         analysis_timestamp DateTime,
+#         created_at DateTime DEFAULT now()
+#     ) ENGINE = MergeTree() ORDER BY (city_name, year, season);
+#     """)
+#     # Create metadata table
+#     execute_clickhouse_query("""
+#     CREATE TABLE IF NOT EXISTS meta.updated_time (
+#         table_name String,
+#         last_updated_time DateTime
+#     ) ENGINE = MergeTree() ORDER BY table_name;
+#     """)
+#     print("    [OK] ClickHouse tables ready")
+
+
+
+# def get_last_updated_time(table_name):
+#     """Get last updated time from ClickHouse metadata table"""
+#     cmd = f'docker exec clickhouse clickhouse-client --query="SELECT last_updated_time FROM meta.updated_time WHERE table_name = \'{table_name}\' LIMIT 1"'
+#     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+
+#     if result.returncode == 0 and result.stdout.strip():
+#         last_time = result.stdout.strip()
+#         return last_time
+#     else:
+#         return None
+
+# def update_metadata_timestamp(table_name, timestamp):
+#     """Update ClickHouse metadata with latest timestamp for a table"""
+#     print(f"\n[*] Updating metadata for {table_name}...")
+
+#     # Delete old entry
+#     cmd_delete = f'docker exec clickhouse clickhouse-client --query="ALTER TABLE meta.updated_time DELETE WHERE table_name = \'{table_name}\'"'
+
+#     # Insert new entry
+#     cmd_insert = f'docker exec clickhouse clickhouse-client --query="INSERT INTO meta.updated_time (table_name, last_updated_time) VALUES (\'{table_name}\', \'{timestamp}\')"'
+
+#     try:
+#         subprocess.run(cmd_delete, shell=True, capture_output=True, text=True, check=True)
+#         subprocess.run(cmd_insert, shell=True, capture_output=True, text=True, check=True)
+#         print(f"    [OK] Metadata updated: {table_name} -> {timestamp}")
+#         return True
+#     except Exception as e:
+#         print(f"    [X] Error updating metadata: {e}")
+#         return False
+    
+
+    
+
+# def run_hive_command(hive_sql, description):
+#     print(f"\n[*] {description}...")
+#     cmd = ['docker', 'exec', 'hive-server', 'bash', '-c', f'hive -e "{hive_sql}"']
+#     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+#     if result.returncode == 0:
+#         print("    [OK] Success")
+#         return True
+#     else:
+#         print(f"    [X] Error: {result.stderr[-600:]}")
+#         return False
+
+# def main():
+#     print("\n" + "="*70)
+#     print("    HIVE WEATHER ANALYTICS PIPELINE - FULLY WORKING VERSION")
+#     print("="*70)
+
+#     create_clickhouse_tables()
+
+#     print("\n[*] Step 1-3: Creating database and tables (with forced cleanup)...")
+
+#     # Step 1: Database
+#     run_hive_command("CREATE DATABASE IF NOT EXISTS weather_analytics;", "Creating database")
+
+#     # Step 2: Location table (safe)
+#     run_hive_command("""
+#     USE weather_analytics;
+#     DROP TABLE IF EXISTS location_data;
+#     CREATE EXTERNAL TABLE location_data (
+#         location_id INT,
+#         latitude DOUBLE,
+#         longitude DOUBLE,
+#         elevation INT,
+#         utc_offset_seconds INT,
+#         timezone STRING,
+#         timezone_abbreviation STRING,
+#         city_name STRING
+#     )
+#     ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+#     STORED AS TEXTFILE
+#     LOCATION '/user/data/kafka_ingested/location'
+#     TBLPROPERTIES ('skip.header.line.count'='1');
+#     """, "Creating location table")
+
+#     # Step 3: Weather table - THE FIX THAT SOLVES YOUR MAIN ERROR
+#     # Using 'dt' instead of `date` to avoid bash backtick interpretation
+#     weather_table_sql = """
+# USE weather_analytics;
+# DROP TABLE IF EXISTS weather_data;
+
+# CREATE EXTERNAL TABLE weather_data (
+#     location_id INT,
+#     dt STRING,
+#     weather_code INT,
+#     temperature_2m_max DOUBLE,
+#     temperature_2m_min DOUBLE,
+#     temperature_2m_mean DOUBLE,
+#     apparent_temperature_max DOUBLE,
+#     apparent_temperature_min DOUBLE,
+#     apparent_temperature_mean DOUBLE,
+#     daylight_duration DOUBLE,
+#     sunshine_duration DOUBLE,
+#     precipitation_sum DOUBLE,
+#     rain_sum DOUBLE,
+#     precipitation_hours DOUBLE,
+#     wind_speed_10m_max DOUBLE,
+#     wind_gusts_10m_max DOUBLE,
+#     wind_direction_10m_dominant DOUBLE,
+#     shortwave_radiation_sum DOUBLE,
+#     et0_fao_evapotranspiration DOUBLE,
+#     sunrise STRING,
+#     sunset STRING
+# )
+# ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+# STORED AS TEXTFILE
+# LOCATION '/user/data/kafka_ingested/weather'
+# TBLPROPERTIES ('skip.header.line.count'='1');
+# """
+#     run_hive_command(weather_table_sql, "Step 3: Creating weather table")
+#     # Verify
+#     print("\n[*] Verifying tables...")
+#     subprocess.run(['docker', 'exec', 'hive-server', 'bash', '-c',
+#                    'hive -e "USE weather_analytics; SHOW TABLES;"'], timeout=60)
+
+#     # Generate timestamp
+#     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+#     print(f"\n[*] Analysis Timestamp: {timestamp}")
+
+#     # Query 1 - Top 10 Temperate Cities
+#     print("\n[*] Running Query 1 - Top 10 Most Temperate Cities...")
+#     output1 = f"/user/data/hive_output/top_10_temperate_cities_{timestamp}"
+#     run_hive_command(f"""
+#     USE weather_analytics;
+#     INSERT OVERWRITE DIRECTORY '{output1}'
+#     ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+#     SELECT l.city_name, ROUND(AVG(w.temperature_2m_max), 2) as avg_temp
+#     FROM weather_data w JOIN location_data l ON w.location_id = l.location_id
+#     WHERE w.temperature_2m_max IS NOT NULL
+#     GROUP BY l.city_name
+#     ORDER BY avg_temp ASC
+#     LIMIT 10;
+#     """, "Executing Query 1")
+
+#     # Query 2 - Evapotranspiration by Season (WORKS ON HIVE 2.1.1)
+#     print("\n[*] Running Query 2 - Avg Evapotranspiration by Season...")
+#     output2 = f"/user/data/hive_output/avg_evapotranspiration_by_season_{timestamp}"
+
+#     query2_sql = f"""
+# USE weather_analytics;
+
+# INSERT OVERWRITE DIRECTORY '{output2}'
+# ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+
+# SELECT
+#     l.city_name,
+#     CASE
+#         WHEN CAST(split(w.dt, '/')[0] AS INT) IN (1,2,3,9,10,11,12) THEN 'Maha'
+#         ELSE 'Yala'
+#     END AS season,
+#     CAST(split(w.dt, '/')[2] AS INT) AS year,
+#     ROUND(AVG(w.et0_fao_evapotranspiration), 2) AS avg_evapotranspiration
+# FROM weather_data w
+# JOIN location_data l ON w.location_id = l.location_id
+# WHERE w.et0_fao_evapotranspiration IS NOT NULL
+#   AND w.dt IS NOT NULL
+#   AND w.dt RLIKE '^[0-9]+/[0-9]+/[0-9]+$'
+# GROUP BY
+#     l.city_name,
+#     split(w.dt, '/')[2],
+#     CASE
+#         WHEN CAST(split(w.dt, '/')[0] AS INT) IN (1,2,3,9,10,11,12) THEN 'Maha'
+#         ELSE 'Yala'
+#     END
+# ORDER BY l.city_name, year, season;
+# """
+
+#     run_hive_command(query2_sql, "Executing Query 2 - Avg Evapotranspiration by Season")
+
+#     # Load to ClickHouse
+#     print("\n" + "="*60)
+#     print("Loading results into ClickHouse...")
+#     print("="*60)
+
+#     def load_file(path, timestamp_str, is_query1=True):
+#         dt = f"{timestamp_str[0:4]}-{timestamp_str[4:6]}-{timestamp_str[6:8]} {timestamp_str[8:10]}:{timestamp_str[10:12]}:{timestamp_str[12:14]}"
+#         cmd = f'docker exec namenode hdfs dfs -cat {path}/000000_0'
+#         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+#         if result.returncode != 0:
+#             print(f"    [X] No file: {path}")
+#             return 0
+#         lines = [l for l in result.stdout.strip().split('\n') if l.strip()]
+#         inserted = 0
+#         for line in lines:
+#             parts = [p.strip() for p in line.split(',')]
+#             if is_query1 and len(parts) >= 2:
+#                 q = f"INSERT INTO top_temperate_cities (city_name, avg_max_temp, analysis_timestamp) VALUES ('{parts[0]}', {parts[1]}, toDateTime('{dt}'))"
+#             elif not is_query1 and len(parts) >= 4:
+#                 q = f"INSERT INTO evapotranspiration_by_season (city_name, season, year, avg_evapotranspiration, analysis_timestamp) VALUES ('{parts[0]}', '{parts[1]}', {parts[2]}, {parts[3]}, toDateTime('{dt}'))"
+#             else:
+#                 continue
+#             if execute_clickhouse_query(q) is not None:
+#                 inserted += 1
+#         print(f"    [OK] Inserted {inserted} records -> {path.split('_')[-1]}")
+#         return inserted
+
+#     q1_count = load_file(output1, timestamp, True)
+#     q2_count = load_file(output2, timestamp, False)
+
+#     # Save locally
+#     Path("hive_results").mkdir(exist_ok=True)
+#     for name, path in [(f"top_10_temperate_cities_{timestamp}.csv", output1),
+#                        (f"avg_evapotranspiration_by_season_{timestamp}.csv", output2)]:
+#         subprocess.run(['docker', 'exec', 'namenode', 'bash', '-c',
+#                        f'hdfs dfs -get {path}/000000_0 /tmp/out.csv || true'], timeout=30)
+#         subprocess.run(['docker', 'cp', 'namenode:/tmp/out.csv', f"hive_results/{name}"], timeout=30)
+#         print(f"    [OK] Saved: hive_results/{name}")
+
+#     # Final summary
+#     print("\n" + "="*70)
+#     print("PIPELINE COMPLETED SUCCESSFULLY!")
+#     print("="*70)
+#     print(f"    Latest results saved with timestamp: {timestamp}")
+#     print(f"    Query 1 records in ClickHouse: {q1_count}")
+#     print(f"    Query 2 records in ClickHouse: {q2_count}")
+#     print(f"    Check results in: hive_results/")
+#     print(f"    ClickHouse UI: http://localhost:8123/play")
+#     print("="*70)
+
+# if __name__ == "__main__":
+#     main()
