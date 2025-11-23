@@ -144,6 +144,77 @@ class HDFSWriter:
 
         logger.info("Resuming Kafka consumption...")
 
+    def run_pyspark(self):
+        """Run PySpark analysis after weather data ingestion"""
+        if not self.weather_files_written:
+            logger.info("No weather files to process with PySpark")
+            return
+
+        logger.info("="*60)
+        logger.info("Starting PySpark Weather Analysis")
+        logger.info("="*60)
+
+        # Get project root directory (2 levels up from src/kafka/)
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        spark_script = os.path.join(project_root, 'src', 'spark', 'weather_spark_analysis_new.py')
+
+        try:
+            # Step 1: Copy script to Spark container
+            logger.info("[Step 1/2] Copying Spark script to container...")
+
+            copy_cmd = [
+                'docker', 'cp',
+                spark_script,
+                'project-spark-master-1:/tmp/weather_spark_analysis_new.py'
+            ]
+
+            result_copy = subprocess.run(copy_cmd, capture_output=True, text=True, check=True)
+            logger.info("✓ Script copied to Spark container")
+
+            # Step 2: Execute Spark job using spark-submit
+            logger.info("[Step 2/2] Submitting Spark job...")
+
+            spark_cmd = [
+                'docker', 'exec', 'project-spark-master-1',
+                'bash', '-c',
+                '/spark/bin/spark-submit --master spark://spark-master:7077 /tmp/weather_spark_analysis_new.py'
+            ]
+
+            result_spark = subprocess.run(
+                spark_cmd,
+                capture_output=True,
+                text=True,
+                timeout=600  # 10 minute timeout
+            )
+
+            if result_spark.returncode == 0:
+                logger.info("✓ PySpark analysis completed successfully")
+
+                # Log important output (filter for key messages)
+                output_lines = result_spark.stdout.split('\n')
+                for line in output_lines:
+                    if any(keyword in line for keyword in ['✓', 'STEP', 'Records written', 'COMPLETE', 'Error']):
+                        logger.info(line)
+
+                logger.info("="*60)
+                logger.info("PYSPARK ANALYSIS COMPLETED!")
+                logger.info("="*60)
+            else:
+                logger.error(f"PySpark analysis failed with exit code {result_spark.returncode}")
+                logger.error(f"Error output: {result_spark.stderr}")
+
+            # NOTE: Don't clear weather_files_written here - let run_processing_pipeline() use it
+
+        except subprocess.TimeoutExpired:
+            logger.error("PySpark job timed out after 10 minutes")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to execute PySpark job: {e}")
+            logger.error(f"Error output: {e.stderr}")
+        except Exception as e:
+            logger.error(f"Error running PySpark analysis: {e}")
+
+        logger.info("PySpark processing complete, continuing to next step...")
+
     def run_processing_pipeline(self):
         """Run MapReduce and ClickHouse loading pipeline after weather data ingestion"""
         if not self.weather_files_written:
@@ -271,6 +342,9 @@ def main():
                     # Step 1: Run Hive analysis first
                     logger.info("Triggering Hive analysis pipeline...")
                     hdfs_writer.run_hive()
+
+                    logger.info("Triggering pyspark analysis pipeline...")
+                    hdfs_writer.run_pyspark()
 
                     # Step 2: Run MapReduce pipeline
                     logger.info("Triggering MapReduce processing pipeline...")
