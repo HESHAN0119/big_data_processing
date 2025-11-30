@@ -435,10 +435,13 @@ services:
       SPARK_MASTER: spark://spark-master:7077
       CORE_CONF_fs_defaultFS: hdfs://namenode:9000
       ZEPPELIN_PORT: 8080
+      MASTER: spark://spark-master:7077
+      SPARK_SUBMIT_OPTIONS: "--conf spark.driver.memory=2g --conf spark.executor.memory=2g"
     volumes:
       - ./data:/data
       - zeppelin_notebooks:/opt/zeppelin/notebook
       - zeppelin_logs:/opt/zeppelin/logs
+      - ./scripts:/scripts
     depends_on:
       - spark-master
       - hive-server
