@@ -1,33 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Spark MLlib - Evapotranspiration Prediction Model Training
-===========================================================
-
-Task 3: Machine Learning Model Training
-
-PURPOSE:
-    Train a Linear Regression model to predict evapotranspiration (ET) based on:
-    - precipitation_hours
-    - sunshine_duration
-    - wind_speed_10m_max
-
-OBJECTIVE:
-    Find optimal weather conditions for May that result in ET < 1.5mm
-
-DATA SPLIT:
-    - Training: 80%
-    - Testing: 20%
-
-OUTPUT:
-    - Trained model saved to HDFS
-    - Model performance metrics saved to ClickHouse
-    - Feature importance analysis
-
-USAGE:
-    spark-submit --master spark://spark-master:7077 train_et_model.py
-"""
-
 import sys
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
@@ -51,8 +21,11 @@ CLICKHOUSE_DB = 'weather_analytics'
 
 # HDFS Paths
 HDFS_BASE = "hdfs://namenode:9000"
-WEATHER_PATH = f"{HDFS_BASE}/user/data/ml_training_data/"  # Dedicated path for ML training
+WEATHER_PATH = f"{HDFS_BASE}/user/data/ml_training_data/"  # get data from hdfs
 MODEL_PATH = f"{HDFS_BASE}/user/models/et_prediction_model"
+
+# Local Model Path (to save outside container)
+LOCAL_MODEL_PATH = "/tmp/et_prediction_model"  # Will be copied to host
 
 # Spark Configuration
 SPARK_APP_NAME = "ET Prediction - Model Training"
@@ -205,9 +178,7 @@ def save_feature_statistics(stats_df, month_num):
 def main():
     """Main ML training pipeline"""
 
-    print("="*80)
     print("SPARK MLLIB - EVAPOTRANSPIRATION PREDICTION MODEL TRAINING")
-    print("="*80)
 
     # ────────────────────────────────────────────────────────────────────
     # STEP 1: Initialize Spark Session
@@ -488,18 +459,35 @@ def main():
     print(f"  Average prediction error: ±{mae:.2f} mm")
 
     # ────────────────────────────────────────────────────────────────────
-    # STEP 10: Save Model to HDFS
+    # STEP 10: Save Model to HDFS and Locally
     # ────────────────────────────────────────────────────────────────────
 
-    print("\n[STEP 10] Saving model to HDFS...")
+    print("\n[STEP 10] Saving model...")
     print("="*80)
 
+    # Save to HDFS
     try:
-        # Save the entire pipeline model
+        print(f"\n[1/2] Saving model to HDFS...")
         model.write().overwrite().save(MODEL_PATH)
-        print(f"✓ Model saved to: {MODEL_PATH}")
+        print(f"✓ Model saved to HDFS: {MODEL_PATH}")
     except Exception as e:
-        print(f"✗ Error saving model: {e}")
+        print(f"✗ Error saving model to HDFS: {e}")
+
+    # Save to local filesystem (for copying out of container)
+    try:
+        print(f"\n[2/2] Saving model to local filesystem...")
+        import shutil
+        import os
+
+        # Remove old local model if exists
+        if os.path.exists(LOCAL_MODEL_PATH):
+            shutil.rmtree(LOCAL_MODEL_PATH)
+
+        model.write().overwrite().save(f"file://{LOCAL_MODEL_PATH}")
+        print(f"✓ Model saved locally: {LOCAL_MODEL_PATH}")
+        print(f"  (This will be copied to src/spark_mllib/model)")
+    except Exception as e:
+        print(f"✗ Error saving model locally: {e}")
 
     # ────────────────────────────────────────────────────────────────────
     # STEP 11: Save Results to ClickHouse
@@ -537,7 +525,8 @@ def main():
     print(f"  ✓ Test set: {test_count:,} records")
     print(f"  ✓ Model trained: Linear Regression")
     print(f"  ✓ Performance: R² = {r2:.4f}, RMSE = {rmse:.4f} mm")
-    print(f"  ✓ Model saved to: {MODEL_PATH}")
+    print(f"  ✓ Model saved to HDFS: {MODEL_PATH}")
+    print(f"  ✓ Model saved locally: {LOCAL_MODEL_PATH}")
     print(f"  ✓ Metrics saved to ClickHouse")
 
     print("\nNext Steps:")
