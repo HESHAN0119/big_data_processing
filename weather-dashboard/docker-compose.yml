@@ -1,0 +1,29 @@
+version: '3.9'
+
+services:
+  dashboard:
+    build: .
+    container_name: weather-dashboard
+    ports:
+      - "8050:8050"
+    environment:
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_DATABASE=weather_analytics
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+    networks:
+      - default
+      - hadoop  # Connect to main project network
+    restart: unless-stopped
+    volumes:
+      - ./app:/app
+      - ../data:/data  # Mount main project data directory
+
+# Connect to existing hadoop network from main project
+networks:
+  hadoop:
+    external: true
+    name: project_hadoop  # Full network name with project prefix
+  default:
+    driver: bridge
