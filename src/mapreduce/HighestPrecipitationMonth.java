@@ -41,10 +41,10 @@ public class HighestPrecipitationMonth {
             }
 
             String[] fields = line.split(",");
-            if (fields.length >= 13) {
+            if (fields.length >= 14) {
                 try {
                     String date = fields[1].trim(); // Format: M/D/YYYY
-                    double precip = Double.parseDouble(fields[12].trim());
+                    double precip = Double.parseDouble(fields[13].trim());
 
                     // Extract year and month from date
                     String[] dateParts = date.split("/");

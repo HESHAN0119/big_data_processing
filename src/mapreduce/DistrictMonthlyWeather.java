@@ -67,12 +67,12 @@ public class DistrictMonthlyWeather {
             }
 
             String[] fields = line.split(",");
-            if (fields.length >= 13) {
+            if (fields.length >= 14) {
                 try {
                     String locationId = fields[0].trim();
                     String date = fields[1].trim(); // Format: M/D/YYYY
                     double meanTemp = Double.parseDouble(fields[5].trim());
-                    double precipHours = Double.parseDouble(fields[12].trim());
+                    double precipHours = Double.parseDouble(fields[13].trim());
 
                     // Extract year and month from date
                     String[] dateParts = date.split("/");
