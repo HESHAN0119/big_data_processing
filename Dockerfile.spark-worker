@@ -1,0 +1,20 @@
+# ============================================================================
+# Custom Spark Worker Image with Python ML Dependencies
+# ============================================================================
+# Based on: bde2020/spark-worker:3.1.1-hadoop3.2
+# Adds: numpy, requests for Spark MLlib operations
+# ============================================================================
+
+FROM bde2020/spark-worker:3.1.1-hadoop3.2
+
+# Install Python dependencies required for Spark MLlib
+RUN apk update && \
+    apk add --no-cache \
+    py3-numpy \
+    py3-requests
+
+# Set working directory
+WORKDIR /spark
+
+# Use the same entrypoint as the base image
+# CMD is inherited from base image

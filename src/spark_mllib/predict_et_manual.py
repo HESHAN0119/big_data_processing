@@ -16,8 +16,8 @@ LOCAL_MODEL_PATH = "/tmp/model/et_prediction_model"  # Will be mounted from host
 HDFS_BASE = "hdfs://namenode:9000"
 HDFS_MODEL_PATH = f"{HDFS_BASE}/user/models/et_prediction_model"
 
-# Use local model by default
-MODEL_PATH = f"file://{LOCAL_MODEL_PATH}"
+# Use HDFS model
+MODEL_PATH = HDFS_MODEL_PATH
 
 # Spark Configuration
 SPARK_APP_NAME = "ET Manual Prediction"
@@ -47,6 +47,9 @@ def main():
         .config("spark.driver.memory", "1g") \
         .config("spark.cores.max", "2") \
         .getOrCreate()
+
+    # Reduce Spark logging verbosity - only show WARN and ERROR messages
+    spark.sparkContext.setLogLevel("WARN")
 
     print(f"✓ Spark Session initialized")
     print(f"  App ID: {spark.sparkContext.applicationId}")
