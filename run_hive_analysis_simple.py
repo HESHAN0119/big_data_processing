@@ -40,9 +40,10 @@ def create_clickhouse_tables():
     CREATE TABLE IF NOT EXISTS top_temperate_cities (
         city_name String,
         avg_max_temp Float64,
+        temp_deviation Float64,
         analysis_timestamp DateTime,
         created_at DateTime DEFAULT now()
-    ) ENGINE = MergeTree() ORDER BY (analysis_timestamp, avg_max_temp);
+    ) ENGINE = MergeTree() ORDER BY (analysis_timestamp, temp_deviation);
     """
 
     # Table for Evapotranspiration by Season
@@ -169,14 +170,15 @@ def load_to_clickhouse_top_cities(hdfs_output, timestamp_str):
                 continue
 
             parts = line.split(',')
-            if len(parts) >= 2:
+            if len(parts) >= 3:
                 city_name = parts[0].strip()
-                avg_temp = parts[1].strip()
+                avg_max_temp = parts[1].strip()
+                temp_deviation = parts[2].strip()
 
                 # Insert into ClickHouse
                 insert_query = f"""
-                INSERT INTO top_temperate_cities (city_name, avg_max_temp, analysis_timestamp)
-                VALUES ('{city_name}', {avg_temp}, toDateTime('{datetime_str}'))
+                INSERT INTO top_temperate_cities (city_name, avg_max_temp, temp_deviation, analysis_timestamp)
+                VALUES ('{city_name}', {avg_max_temp}, {temp_deviation}, toDateTime('{datetime_str}'))
                 """
                 if execute_clickhouse_query(insert_query) is not None:
                     records_inserted += 1
@@ -345,11 +347,16 @@ TBLPROPERTIES ('skip.header.line.count'='1');
     USE weather_analytics;
     INSERT OVERWRITE DIRECTORY '{hdfs_output1}'
     ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
-    SELECT l.city_name, ROUND(AVG(w.temperature_2m_max), 2) as avg_temp
-    FROM weather_data w JOIN location_data l ON w.location_id = l.location_id
+    SELECT
+        l.city_name,
+        ROUND(AVG(w.temperature_2m_max), 2) AS avg_max_temp,
+        ABS(AVG(w.temperature_2m_max) - 22) AS temp_deviation
+    FROM weather_data w
+    JOIN location_data l
+        ON w.location_id = l.location_id
     WHERE w.temperature_2m_max IS NOT NULL
     GROUP BY l.city_name
-    ORDER BY avg_temp ASC
+    ORDER BY temp_deviation ASC
     LIMIT 10;
     """
     run_hive_command(query1_sql, "Executing Query 1")
