@@ -1,10 +1,4 @@
 -- Requirement 4: Total number of days with extreme weather events
--- (high precipitation and high wind gusts)
-
--- NOTE: This requires raw daily weather data with wind_gusts_10m_max field
--- The district_monthly_weather table does not have wind data
--- We need to query from raw_weather_data table
-
 -- Query 4a: Extreme weather days by district (from raw data)
 SELECT
     l.city_name as district,

@@ -1,19 +1,7 @@
-# ============================================================================
-# Train ET Prediction Model and Save to Host
-# ============================================================================
-#
-# This script:
-# 1. Copies training script to Spark container
-# 2. Runs model training
-# 3. Copies trained model back to host (src\spark_mllib\model)
-#
-# Usage:
-#   .\run_training.ps1
-# ============================================================================
 
-Write-Host "================================================================================" -ForegroundColor Cyan
+
 Write-Host "ET MODEL TRAINING - SPARK MLLIB" -ForegroundColor Cyan
-Write-Host "================================================================================" -ForegroundColor Cyan
+
 Write-Host ""
 
 $containerName = "project-spark-master-1"

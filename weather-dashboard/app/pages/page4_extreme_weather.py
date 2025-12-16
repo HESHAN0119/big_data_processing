@@ -1,7 +1,3 @@
-"""
-Page 4: Extreme Weather Events
-Days with extreme weather events (high precipitation + high wind gusts)
-"""
 
 import dash
 from dash import html, dcc, callback
@@ -23,7 +19,7 @@ from utils.db_connection import execute_query
 layout = dbc.Container([
     dbc.Row([
         dbc.Col([
-            html.H1("⚠️ Extreme Weather Events Analysis", className="text-primary mb-3"),
+            html.H1(" Extreme Weather Events Analysis", className="text-primary mb-3"),
             html.P("Days with extreme weather conditions (high precipitation AND high wind gusts)",
                    className="lead text-muted")
         ])
@@ -122,7 +118,7 @@ layout = dbc.Container([
 
     dbc.Row([
         dbc.Col([
-            html.H4("⚡ Event Summary", className="text-primary"),
+            html.H4(" Event Summary", className="text-primary"),
             html.Div(id='extreme-weather-summary')
         ], md=12)
     ])
@@ -365,7 +361,7 @@ def update_extreme_weather_charts(precip_threshold, wind_threshold):
 
             summary = dbc.Card([
                 dbc.CardBody([
-                    html.H5("⚡ Event Statistics", className="card-title"),
+                    html.H5(" Event Statistics", className="card-title"),
                     html.Ul([
                         html.Li([
                             html.Strong("Total Extreme Weather Days: "),

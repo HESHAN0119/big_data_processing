@@ -1,7 +1,4 @@
-"""
-Page 2: Top 5 Districts by Precipitation
-Analysis of districts with highest total precipitation
-"""
+
 
 import dash
 from dash import html, dcc, callback
@@ -23,7 +20,7 @@ from utils.db_connection import execute_query
 layout = dbc.Container([
     dbc.Row([
         dbc.Col([
-            html.H1("🏆 Top 5 Districts by Precipitation", className="text-primary mb-3"),
+            html.H1(" Top 5 Districts by Precipitation", className="text-primary mb-3"),
             html.P("Districts with the highest total precipitation amounts",
                    className="lead text-muted")
         ])

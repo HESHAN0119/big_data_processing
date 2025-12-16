@@ -1,7 +1,3 @@
-"""
-Weather Analytics Dashboard - Main Application
-Multi-page Dash application for visualizing Sri Lankan weather data
-"""
 
 import dash
 from dash import html, dcc
@@ -29,7 +25,7 @@ navbar = dbc.NavbarSimple(
         dbc.NavItem(dbc.NavLink("Temperature Analysis", href="/temperature", active="exact")),
         dbc.NavItem(dbc.NavLink("Extreme Weather", href="/extreme-weather", active="exact")),
     ],
-    brand="🌦️ Sri Lanka Weather Analytics Dashboard",
+    brand=" Sri Lanka Weather Analytics Dashboard",
     brand_href="/",
     color="primary",
     dark=True,
@@ -77,7 +73,7 @@ def display_page(pathname):
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("🌦️  Weather Analytics Dashboard")
+    print("  Weather Analytics Dashboard")
     print("=" * 60)
     print("Starting Dash server...")
     print("Access the dashboard at: http://localhost:8050")

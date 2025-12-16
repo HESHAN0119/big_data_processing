@@ -10,9 +10,9 @@ from pyspark.ml.evaluation import RegressionEvaluator
 from pyspark.ml import Pipeline
 import requests
 
-# ========================================================================
+
 # CONFIGURATION
-# ========================================================================
+
 
 # ClickHouse Configuration
 CLICKHOUSE_HOST = 'clickhouse'
@@ -44,9 +44,8 @@ FEATURE_COLS = [
 ]
 TARGET_COL = 'et0_fao_evapotranspiration (mm)'
 
-# ========================================================================
+
 # CLICKHOUSE FUNCTIONS
-# ========================================================================
 
 def execute_clickhouse_query(query, verbose=True):
     """Execute SQL query on ClickHouse via HTTP API"""
@@ -171,18 +170,18 @@ def save_feature_statistics(stats_df, month_num):
 
     print(f"✓ Saved statistics for {len(stats_data)} features")
 
-# ========================================================================
+
 # MAIN TRAINING PIPELINE
-# ========================================================================
+
 
 def main():
     """Main ML training pipeline"""
 
     print("SPARK MLLIB - EVAPOTRANSPIRATION PREDICTION MODEL TRAINING")
 
-    # ────────────────────────────────────────────────────────────────────
+    
     # STEP 1: Initialize Spark Session
-    # ────────────────────────────────────────────────────────────────────
+    
 
     print("\n[STEP 1] Initializing Spark Session...")
 
@@ -196,16 +195,16 @@ def main():
     print(f"✓ Spark Session initialized")
     print(f"  App ID: {spark.sparkContext.applicationId}")
 
-    # ────────────────────────────────────────────────────────────────────
+    
     # STEP 2: Create ClickHouse Tables
-    # ────────────────────────────────────────────────────────────────────
+    
 
     print("\n[STEP 2] Setting up ClickHouse tables...")
     create_ml_tables()
 
-    # ────────────────────────────────────────────────────────────────────
+    
     # STEP 3: Load and Prepare Data
-    # ────────────────────────────────────────────────────────────────────
+    
 
     print("\n[STEP 3] Loading weather data from HDFS...")
     print("="*80)
@@ -231,9 +230,9 @@ def main():
         "month", month(col("date_parsed"))
     )
 
-    # ────────────────────────────────────────────────────────────────────
+    
     # STEP 4: Filter for May and Select Features
-    # ────────────────────────────────────────────────────────────────────
+    
 
     print("\n[STEP 4] Filtering data for May...")
     print("="*80)
@@ -265,9 +264,9 @@ def main():
     print("\nSample data:")
     may_clean.select(*FEATURE_COLS, TARGET_COL).show(5, truncate=False)
 
-    # ────────────────────────────────────────────────────────────────────
+    
     # STEP 5: Feature Statistics & Analysis
-    # ────────────────────────────────────────────────────────────────────
+    
 
     print("\n[STEP 5] Analyzing feature statistics...")
     print("="*80)
@@ -302,9 +301,9 @@ def main():
     stats_df = spark.createDataFrame(stats_list)
     save_feature_statistics(stats_df, TARGET_MONTH)
 
-    # ────────────────────────────────────────────────────────────────────
+    
     # STEP 6: Feature Engineering
-    # ────────────────────────────────────────────────────────────────────
+    
 
     print("\n[STEP 6] Feature Engineering...")
     print("="*80)
@@ -329,9 +328,9 @@ def main():
     print(f"  Input features: {FEATURE_COLS}")
     print(f"  Output: Scaled feature vector")
 
-    # ────────────────────────────────────────────────────────────────────
+    
     # STEP 7: Train/Test Split
-    # ────────────────────────────────────────────────────────────────────
+    
 
     print("\n[STEP 7] Splitting data into train/test sets...")
     print("="*80)
@@ -349,9 +348,9 @@ def main():
     print(f"  Training set: {train_count:,} records ({train_count/clean_count*100:.1f}%)")
     print(f"  Test set: {test_count:,} records ({test_count/clean_count*100:.1f}%)")
 
-    # ────────────────────────────────────────────────────────────────────
+    
     # STEP 8: Train Linear Regression Model
-    # ────────────────────────────────────────────────────────────────────
+    
 
     print("\n[STEP 8] Training Linear Regression Model...")
     print("="*80)
@@ -395,9 +394,9 @@ def main():
         terms.append(f"{sign} {abs(coef):.3f}×{feature}")
     print(" ".join(terms))
 
-    # ────────────────────────────────────────────────────────────────────
+    
     # STEP 9: Model Evaluation on Test Set
-    # ────────────────────────────────────────────────────────────────────
+    
 
     print("\n[STEP 9] Evaluating Model Performance...")
     print("="*80)
@@ -458,9 +457,9 @@ def main():
 
     print(f"  Average prediction error: ±{mae:.2f} mm")
 
-    # ────────────────────────────────────────────────────────────────────
+    
     # STEP 10: Save Model to HDFS and Locally
-    # ────────────────────────────────────────────────────────────────────
+    
 
     print("\n[STEP 10] Saving model...")
     print("="*80)
@@ -489,9 +488,9 @@ def main():
     except Exception as e:
         print(f"✗ Error saving model locally: {e}")
 
-    # ────────────────────────────────────────────────────────────────────
+    
     # STEP 11: Save Results to ClickHouse
-    # ────────────────────────────────────────────────────────────────────
+    
 
     print("\n[STEP 11] Saving results to ClickHouse...")
     print("="*80)
@@ -510,9 +509,9 @@ def main():
 
     save_model_performance(metrics_dict)
 
-    # ────────────────────────────────────────────────────────────────────
+    
     # STEP 12: Summary
-    # ────────────────────────────────────────────────────────────────────
+    
 
     print("\n" + "="*80)
     print("TRAINING COMPLETE!")
@@ -529,17 +528,14 @@ def main():
     print(f"  ✓ Model saved locally: {LOCAL_MODEL_PATH}")
     print(f"  ✓ Metrics saved to ClickHouse")
 
-    print("\nNext Steps:")
-    print("  → Run predict_et_model.py to make predictions for May 2026")
-    print("  → Find optimal conditions where ET < 1.5mm")
 
     # Stop Spark session
     spark.stop()
     print("\n✓ Spark session stopped")
 
-# ========================================================================
+
 # ENTRY POINT
-# ========================================================================
+
 
 if __name__ == "__main__":
     try:

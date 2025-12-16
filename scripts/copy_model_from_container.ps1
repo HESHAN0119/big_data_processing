@@ -1,20 +1,3 @@
-# ============================================================================
-# Copy Trained Model from Spark Container to Host
-# ============================================================================
-#
-# This script copies the trained ET prediction model from the Spark container
-# to the host machine at: src\spark_mllib\model
-#
-# Usage:
-#   .\scripts\copy_model_from_container.ps1
-#
-# Note: Run this AFTER training the model with train_et_model.py
-# ============================================================================
-
-Write-Host "================================================================================" -ForegroundColor Cyan
-Write-Host "COPY MODEL FROM SPARK CONTAINER" -ForegroundColor Cyan
-Write-Host "================================================================================" -ForegroundColor Cyan
-Write-Host ""
 
 # Configuration
 $containerName = "project-spark-master-1"
@@ -86,10 +69,4 @@ Get-ChildItem -Path "$hostModelPath\et_prediction_model" -Recurse | Select-Objec
     }
 }
 
-Write-Host ""
-Write-Host "================================================================================" -ForegroundColor Cyan
-Write-Host "SUCCESS! Model is now available at:" -ForegroundColor Green
-Write-Host "  $hostModelPath\et_prediction_model" -ForegroundColor White
-Write-Host "================================================================================" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "You can now use this model for predictions!" -ForegroundColor Yellow
+

@@ -1,7 +1,4 @@
-"""
-Page 1: Precipitation Analysis
-Most precipitous month/season for each district across different periods
-"""
+
 
 import dash
 from dash import html, dcc, callback
@@ -23,7 +20,7 @@ from utils.db_connection import execute_query, get_month_name
 layout = dbc.Container([
     dbc.Row([
         dbc.Col([
-            html.H1("📊 Precipitation Analysis", className="text-primary mb-3"),
+            html.H1(" Precipitation Analysis", className="text-primary mb-3"),
             html.P("Most precipitous month/season for each district across different periods",
                    className="lead text-muted")
         ])
@@ -141,7 +138,7 @@ def update_precipitation_charts(selected_districts, year_range):
 
         # Query 1: Monthly precipitation data for heatmap
         query1 = f"""
-        SELECT
+        SELECT distinct
             district,
             month,
             ROUND(AVG(total_precipitation_hours), 2) as avg_precip
@@ -154,7 +151,7 @@ def update_precipitation_charts(selected_districts, year_range):
 
         # Query 2: Seasonal precipitation
         query2 = f"""
-        SELECT
+        SELECT distinct
             district,
             CASE
                 WHEN month IN (9,10,11,12,1,2,3) THEN 'Maha (Sep-Mar)'
@@ -172,7 +169,7 @@ def update_precipitation_charts(selected_districts, year_range):
         # Query 3: Monthly trends for top 5 districts
         # First, get top 5 districts by total precipitation
         query3_top5 = f"""
-        SELECT
+        SELECT distinct
             district,
             SUM(total_precipitation_hours) as total_precip
         FROM district_monthly_weather
@@ -189,7 +186,7 @@ def update_precipitation_charts(selected_districts, year_range):
             districts_str = "', '".join(top5_districts)
 
             query3 = f"""
-            SELECT
+            SELECT distinct
                 district,
                 year,
                 month,

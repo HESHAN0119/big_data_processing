@@ -1,7 +1,4 @@
-"""
-Page 3: Temperature Analysis
-Percentage of months that had a mean temperature above 30°C
-"""
+
 
 import dash
 from dash import html, dcc, callback
@@ -23,7 +20,7 @@ from utils.db_connection import execute_query
 layout = dbc.Container([
     dbc.Row([
         dbc.Col([
-            html.H1("🌡️ Temperature Analysis (>30°C)", className="text-primary mb-3"),
+            html.H1(" Temperature Analysis (>30°C)", className="text-primary mb-3"),
             html.P("Percentage of months with mean temperature above 30°C across districts and years",
                    className="lead text-muted")
         ])

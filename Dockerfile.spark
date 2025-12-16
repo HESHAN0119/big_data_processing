@@ -1,9 +1,3 @@
-# ============================================================================
-# Custom Spark Image with Python ML Dependencies
-# ============================================================================
-# Based on: bde2020/spark-master:3.1.1-hadoop3.2
-# Adds: numpy, requests for Spark MLlib operations
-# ============================================================================
 
 FROM bde2020/spark-master:3.1.1-hadoop3.2
 
@@ -15,10 +9,3 @@ RUN apk update && \
 
 # Set working directory
 WORKDIR /spark
-
-# Expose Spark ports (already exposed in base image, but documenting here)
-# 8080: Spark Master Web UI
-# 7077: Spark Master port for workers
-
-# Use the same entrypoint as the base image
-# CMD is inherited from base image

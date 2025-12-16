@@ -1,13 +1,3 @@
-# ============================================================================
-# Manual ET Prediction Runner
-# ============================================================================
-#
-# This script copies and runs the manual ET prediction on Spark
-#
-# Usage:
-#   1. Edit values in src/spark_mllib/predict_et_manual.py (lines 17-19)
-#   2. Run this script: .\run_manual_prediction.ps1
-# ============================================================================
 
 Write-Host "================================================================================" -ForegroundColor Cyan
 Write-Host "MANUAL ET PREDICTION - SPARK RUNNER" -ForegroundColor Cyan
