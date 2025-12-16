@@ -1,39 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Spark Weather Analysis - Task 2.3
-==================================
-
-Reads Kafka-ingested weather data from HDFS and writes analysis results to ClickHouse.
-
-USAGE:
-    python weather_spark_analysis_new.py
-
-DATA SOURCE:
-    - HDFS Location: /user/data/kafka_ingested/location/ (CSV files with header)
-    - HDFS Weather: /user/data/kafka_ingested/weather/ (CSV files with header)
-
-ANALYSES:
-    Task 2.3a: Calculate percentage of shortwave radiation > 15MJ/m2 per month
-    Task 2.3b: Weekly maximum temperatures for the hottest months of each year
-
-OUTPUT:
-    - ClickHouse tables: radiation_analysis, weekly_max_temp_hottest_months
-    - Database: weather_analytics
-
-REQUIREMENTS:
-    - PySpark 3.x
-    - requests library (pip install requests)
-    - YARN cluster running
-    - ClickHouse database accessible
-"""
 
 import os
 import sys
 
-# ========================================================================
-# IMPORTS
-# ========================================================================
 
 try:
     from pyspark.sql import SparkSession
@@ -76,9 +46,9 @@ SPARK_APP_NAME = "Weather Analysis - Kafka to ClickHouse"
 SPARK_MASTER = "spark://spark-master:7077"  # Use Spark standalone cluster
 SPARK_DEPLOY_MODE = "client"  # Client mode for interactive output
 
-# ========================================================================
-# CLICKHOUSE FUNCTIONS
-# ========================================================================
+
+# ------------------------- data insert CLICKHOUSE FUNCTIONS
+
 
 def execute_clickhouse_query(query, verbose=True):
     """Execute SQL query on ClickHouse via HTTP API"""
@@ -137,14 +107,7 @@ def create_clickhouse_tables():
     print("\n✓ Tables created successfully\n")
 
 def write_to_clickhouse(df, table_name, mode="append"):
-    """
-    Write Spark DataFrame to ClickHouse table
 
-    Args:
-        df: Spark DataFrame
-        table_name: Target table name in ClickHouse
-        mode: 'append' or 'overwrite'
-    """
     print(f"\n{'='*80}")
     print(f"WRITING TO CLICKHOUSE: {table_name}")
     print(f"{'='*80}")
@@ -154,7 +117,7 @@ def write_to_clickhouse(df, table_name, mode="append"):
     row_count = len(data)
 
     if row_count == 0:
-        print("⚠ No data to write")
+        print("No data to write")
         return False
 
     print(f"Collected {row_count} rows from Spark")
@@ -214,23 +177,21 @@ def write_to_clickhouse(df, table_name, mode="append"):
 
     return True
 
-# ========================================================================
 # MAIN ANALYSIS PIPELINE
-# ========================================================================
 
 def main():
     """Main analysis pipeline"""
 
-    print("="*80)
+    print("-"*80)
     print("SPARK WEATHER ANALYSIS - TASK 2.3")
     print("Kafka Ingested Data → ClickHouse")
-    print("="*80)
+    print("-"*80)
 
-    # ────────────────────────────────────────────────────────────────────
-    # STEP 1: Initialize Spark Session
-    # ────────────────────────────────────────────────────────────────────
 
-    print("\n[STEP 1] Initializing Spark Session with YARN...")
+    # -------------Initialize Spark Session
+
+
+    print("\n[STEP 1] Initializing Spark Session with YARN")
 
     spark = SparkSession.builder \
         .appName(SPARK_APP_NAME) \
@@ -246,16 +207,16 @@ def main():
     print(f"  Master: {spark.sparkContext.master}")
     print(f"  App ID: {spark.sparkContext.applicationId}")
 
-    # ────────────────────────────────────────────────────────────────────
-    # STEP 2: Create ClickHouse Tables
-    # ────────────────────────────────────────────────────────────────────
+    
+    # Create ClickHouse Tables
+    
 
     print("\n[STEP 2] Setting up ClickHouse tables...")
     create_clickhouse_tables()
 
-    # ────────────────────────────────────────────────────────────────────
-    # STEP 3: Load Data from HDFS
-    # ────────────────────────────────────────────────────────────────────
+    
+    #  Load Data from HDFS
+    
 
     print("\n[STEP 3] Loading data from HDFS (Kafka ingested)...")
 
@@ -342,14 +303,14 @@ def main():
         "city_name", "date", "temperature_2m_max", "shortwave_radiation_sum"
     ).show(5, truncate=False)
 
-    # ────────────────────────────────────────────────────────────────────
-    # STEP 4: Task 2.3a - Radiation Analysis
-    # ────────────────────────────────────────────────────────────────────
+    
+    # -----Task 2.3a - Radiation Analysis
+    
 
     print("\n[STEP 4] TASK 2.3a: Radiation Analysis")
-    print("="*80)
+    print("-"*80)
     print("Calculate percentage of radiation > 15MJ/m2 per month")
-    print("="*80)
+    print("-"*80)
 
     # Group by year, month and calculate statistics
     radiation_stats = weather_with_location.groupBy("year", "month").agg(
@@ -382,9 +343,9 @@ def main():
     # Write to ClickHouse
     write_to_clickhouse(radiation_result, "radiation_analysis", mode="overwrite")
 
-    # ────────────────────────────────────────────────────────────────────
+    
     # STEP 5: Task 2.3b - Weekly Max Temperature (Hottest Months)
-    # ────────────────────────────────────────────────────────────────────
+    
 
     print("\n[STEP 5] TASK 2.3b: Weekly Max Temperature (Hottest Months)")
     print("="*80)
@@ -398,7 +359,7 @@ def main():
         avg("temperature_2m_max").alias("avg_max_temp")
     )
 
-    # Rank months within each year (top 3)
+    # -----------------------Rank months within each year (top 3)
     window_spec = Window.partitionBy("year").orderBy(desc("avg_max_temp"))
     hottest_months = monthly_avg_temp.withColumn(
         "rank",
@@ -446,9 +407,9 @@ def main():
     # Write to ClickHouse
     write_to_clickhouse(weekly_result, "weekly_max_temp_hottest_months", mode="overwrite")
 
-    # ────────────────────────────────────────────────────────────────────
+    
     # STEP 6: Summary
-    # ────────────────────────────────────────────────────────────────────
+    
 
     print("\n" + "="*80)
     print("ANALYSIS COMPLETE!")
@@ -478,9 +439,6 @@ def main():
     spark.stop()
     print("\n✓ Spark session stopped")
 
-# ========================================================================
-# ENTRY POINT
-# ========================================================================
 
 if __name__ == "__main__":
     try:

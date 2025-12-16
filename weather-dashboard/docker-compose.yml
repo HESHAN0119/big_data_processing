@@ -5,7 +5,7 @@ services:
     build: .
     container_name: weather-dashboard
     ports:
-      - "8050:8050"
+      - "11000:8050"
     environment:
       - CLICKHOUSE_HOST=clickhouse
       - CLICKHOUSE_PORT=9000

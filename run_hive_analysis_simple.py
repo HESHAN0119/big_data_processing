@@ -170,15 +170,14 @@ def load_to_clickhouse_top_cities(hdfs_output, timestamp_str):
                 continue
 
             parts = line.split(',')
-            if len(parts) >= 3:
+            if len(parts) >= 2:
                 city_name = parts[0].strip()
-                avg_max_temp = parts[1].strip()
-                temp_deviation = parts[2].strip()
+                avg_temp = parts[1].strip()
 
                 # Insert into ClickHouse
                 insert_query = f"""
-                INSERT INTO top_temperate_cities (city_name, avg_max_temp, temp_deviation, analysis_timestamp)
-                VALUES ('{city_name}', {avg_max_temp}, {temp_deviation}, toDateTime('{datetime_str}'))
+                INSERT INTO top_temperate_cities (city_name, avg_max_temp, analysis_timestamp)
+                VALUES ('{city_name}', {avg_temp}, toDateTime('{datetime_str}'))
                 """
                 if execute_clickhouse_query(insert_query) is not None:
                     records_inserted += 1
@@ -378,7 +377,10 @@ SELECT
         WHEN CAST(split(w.dt, '/')[0] AS INT) IN (1,2,3,9,10,11,12) THEN 'Maha'
         ELSE 'Yala'
     END AS season,
-    CAST(split(w.dt, '/')[2] AS INT) AS year,
+    CASE
+    WHEN CAST(split(w.dt, '/')[0] AS INT) IN (1,2,3) THEN CAST(split(w.dt, '/')[2] AS INT) - 1
+    ELSE CAST(split(w.dt, '/')[2] AS INT)
+END AS year,
     ROUND(AVG(w.et0_fao_evapotranspiration), 2) AS avg_evapotranspiration
 FROM weather_data w
 JOIN location_data l ON w.location_id = l.location_id
@@ -387,7 +389,10 @@ WHERE w.et0_fao_evapotranspiration IS NOT NULL
   AND w.dt RLIKE '^[0-9]+/[0-9]+/[0-9]+$'
 GROUP BY
     l.city_name,
-    split(w.dt, '/')[2],
+    CASE
+    WHEN CAST(split(w.dt, '/')[0] AS INT) IN (1,2,3) THEN CAST(split(w.dt, '/')[2] AS INT) - 1
+    ELSE CAST(split(w.dt, '/')[2] AS INT)
+    END,
     CASE
         WHEN CAST(split(w.dt, '/')[0] AS INT) IN (1,2,3,9,10,11,12) THEN 'Maha'
         ELSE 'Yala'
